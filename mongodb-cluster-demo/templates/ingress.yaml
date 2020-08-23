@@ -1,0 +1,22 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "mongodb-cluster-demo.fullname" . -}}
+{{- $svcPort := .Values.service.router.ports.port -}}
+{{- if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: networking.k8s.io/v1beta1
+{{- else -}}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "mongodb-cluster-demo.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  backend:
+    serviceName: "{{ $fullName }}-0"
+    servicePort: {{ $svcPort }}
+{{- end }}

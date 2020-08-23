@@ -1,0 +1,24 @@
+{{- range $i, $e := until ($.Values.shardsCount | int) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc"
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "mongodb-cluster-demo.labels" $ | nindent 4 }}
+    role: mongo-db
+    shard: "{{ $i }}"
+spec:
+  clusterIP: None
+  type: {{ $.Values.service.db.type }}
+  ports:
+    - name: {{ $.Values.service.db.ports.name }}
+      port: {{ $.Values.service.db.ports.port }}
+      targetPort: {{ $.Values.service.db.ports.port }}
+      protocol: TCP
+  selector:
+    {{- include "mongodb-cluster-demo.labels" $ | nindent 4 }}
+    role: mongo-db
+    shard: "{{ $i }}"
+{{- end }}

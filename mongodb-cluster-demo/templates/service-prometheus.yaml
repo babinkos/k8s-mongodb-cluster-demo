@@ -1,0 +1,25 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" . }}-exporter"
+  labels:
+    app.kubernetes.io/name: {{ include "mongodb-cluster-demo.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "mongodb-cluster-demo.chart" . }}
+    k8s-app: mongodb-metrics
+  annotations:
+    alpha.monitoring.coreos.com/non-namespaced: "true"
+spec:
+  ports:
+    - port: 9216
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: {{ include "mongodb-cluster-demo.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app: mongo
+  type: ClusterIP
+{{- end }}

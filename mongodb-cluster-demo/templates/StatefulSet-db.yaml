@@ -1,0 +1,229 @@
+{{- range $i, $e := until ($.Values.shardsCount | int) }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db"
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "mongodb-cluster-demo.labels" $ | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mongodb-cluster-demo.labels" $ | nindent 6 }}
+      role: mongo-db
+      shard: "{{ $i }}"
+  serviceName: "{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc"
+  replicas: {{ $.Values.replicas.db.count }}
+  template:
+    metadata:
+      labels:
+        {{- include "mongodb-cluster-demo.labels" $ | nindent 8 }}
+        role: mongo-db
+        app: mongo
+        shard: "{{ $i }}"
+      {{- if not $.Values.serviceMonitor.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "metrics"
+      {{- end }}
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      terminationGracePeriodSeconds: 30
+      {{- $nodes := (lookup "v1" "Node" "" "").items }}
+      {{- if $nodes }}
+      #Nodes count: {{- len $nodes }} ; minAvailable.db: {{- $.Values.minAvailable.db }}; Replicas: {{- $.Values.replicas.db.count }}
+        {{- if gt (len $nodes | int) ( $.Values.minAvailable.db | int) }}
+          {{- if gt (len $nodes | int) ( $.Values.replicas.db.count | int) }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: 'app.kubernetes.io/name'
+                operator: In
+                values:
+                - "{{ include "mongodb-cluster-demo.name" $ }}"
+              - key: 'app.kubernetes.io/instance'
+                operator: In
+                values:
+                - "{{ $.Release.Name }}"
+              - key: 'helm-revision'
+                operator: In
+                values:
+                - "{{ $.Release.Revision }}"
+              - key: 'role'
+                operator: In
+                values:
+                - "mongo-db"
+              - key: 'shard'
+                operator: In
+                values:
+                - "{{ $i }}"
+            topologyKey: "kubernetes.io/hostname"
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      initContainers:
+      - name: init
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          # privileged: true
+        image: busybox:latest
+        command:
+          - '/bin/ash'
+          - '-c'
+          - |
+            ls -l /data
+            owner=""
+            [ ! "$(id -u $(stat -c "%U" /data/db))" == "999" ] && owner="999"
+            [ ! "$(id -g $(stat -c "%G" /data/db))" == "999" ] && owner="${owner}:999"
+            [ ! -z "$owner" ] && chown -R 999:999 /data/db
+            ls -l /data
+            [ "$(sysctl net.ipv4.tcp_keepalive_time | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_time=180  || true
+            [ "$(sysctl net.ipv4.tcp_keepalive_intvl | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_intvl=180  || true
+            [ "$(sysctl net.ipv4.tcp_keepalive_probes | cut -d'=' -f2 | tr -d ' ')" -ne 4 ] && sysctl -w net.ipv4.tcp_keepalive_probes=4  || true
+            [ "$(sysctl vm.swappiness | cut -d"=" -f2 | cut -d" " -f2)" -lt 1 ] && sysctl -w vm.max_map_count=1 || true
+        volumeMounts:
+          - name: mongodb-persistent-storage
+            mountPath: /data/db
+      volumes:
+      - name: keyfiles
+        secret:
+            secretName: {{ include "mongodb-cluster-demo.fullname" $ }}-keys
+            defaultMode: 0644
+            items:
+            - key: key1
+              path: keyfile
+      containers:
+      - name: mongo
+        image: "{{ $.Values.image.repository }}:{{ $.Chart.AppVersion }}"
+        imagePullPolicy: {{ $.Values.image.pullPolicy }}
+        command:
+          - 'bash'
+          - '-c'
+          - |
+            echo "app started at $(date -u)" | tee -a /tmp/prestop.log
+            ps aux
+            id
+            ls -l /data
+            ls -l /secret/keyfile
+            cp /secret/keyfile /tmp/keyfile
+            chmod 400 /tmp/keyfile
+            ls -l /tmp/keyfile
+            mongod --replSet {{ $.Values.db_rs }}{{ $i }} --shardsvr --wiredTigerCacheSizeGB {{ $.Values.cacheSizeGB.db }} --bind_ip_all --port {{ $.Values.service.db.ports.port }} --dbpath /data/db  --transitionToAuth --keyFile=/tmp/keyfile
+            EXCODE="$?"
+            echo "app finished at $(date -u)" | tee -a /tmp/prestop.log
+            echo "app finished, result code: $EXCODE"
+            echo
+            echo "Container lifecycle logged events:"
+            echo
+            cat /tmp/prestop.log
+        lifecycle:
+          preStop:
+            exec:
+              command: 
+                - "/bin/bash"
+                - "-c"
+                - |
+                  echo 'lyfecycle preStop hook: Pod is set to the “Terminating” State, pause 5s and send SIGINT to dotnet' >> /tmp/prestop.log
+                  echo "sleep $(expr 10 - ${MY_POD_NAME//*-} )s since $(date -u)" >> /tmp/prestop.log
+                  sleep $(expr 10 - ${MY_POD_NAME//*-} )s
+                  echo "preStop will shutdown mongod now at $(date -u)" >> /tmp/prestop.log
+                  mongod --shutdown
+        env:
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+        ports:
+          - containerPort: {{ $.Values.service.db.ports.port }}
+        livenessProbe:
+          exec:
+            command:
+            - bash
+            - "-c"
+            - |
+              [ $(mongo mongodb://127.0.0.1:{{ $.Values.service.db.ports.port }}/test --quiet --eval 'db.runCommand("ping").ok') == 1 ]
+          initialDelaySeconds: 1
+          periodSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - bash
+            - "-c"
+            - |
+              [ $(mongo mongodb://127.0.0.1:{{ $.Values.service.db.ports.port }}/test --quiet --eval 'db.runCommand("ping").ok') == 1 ]
+          initialDelaySeconds: 1
+          periodSeconds: 5
+        volumeMounts:
+          - name: mongodb-persistent-storage
+            mountPath: /data/db
+          - name: keyfiles
+            mountPath: /secret/keyfile
+            subPath: keyfile
+            readOnly: true
+      - name: mongo-sidecar
+        image: cvallance/mongo-k8s-sidecar
+        env:
+          - name: MONGO_SIDECAR_POD_LABELS
+            value: "role=mongo-db,shard={{ $i }}"
+          - name: KUBERNETES_MONGO_SERVICE_NAME
+            value: "{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc"
+          - name: KUBE_NAMESPACE
+            value: {{ $.Release.Namespace }}
+          - name: MONGO_PORT
+            value: "{{ $.Values.service.db.ports.port }}"
+          - name: MONGO_SIDECAR_SLEEP_SECONDS
+            value: "5"
+          - name: MONGO_SIDECAR_UNHEALTHY_SECONDS
+            value: "15"
+      - name: mongodb-exporter
+        env:
+          - name: MONGODB_URI
+            value: "mongodb://127.0.0.1:{{ $.Values.service.db.ports.port }}"
+        {{- if $.Values.env }}
+        {{- range $key, $value := $.Values.env }}
+          - name: "{{ $key }}"
+            value: "{{ $value }}"
+        {{- end }}
+        {{- end }}
+        image: "{{ $.Values.exporter_image.repository }}:{{ $.Values.exporter_image.tag }}"
+        imagePullPolicy: {{ $.Values.image.pullPolicy }}
+        args:
+        - --web.listen-address={{ printf ":%s" $.Values.exporter_port }}
+        {{- toYaml $.Values.extraArgs | nindent 8 }}
+        ports:
+        - name: metrics
+          containerPort: {{ $.Values.exporter_port }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /
+            port: metrics
+          initialDelaySeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: metrics
+          initialDelaySeconds: 10
+        resources:
+          {{- toYaml $.Values.resources | nindent 10 }}
+        securityContext:
+          {{- toYaml $.Values.securityContext | nindent 10 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-persistent-storage
+      spec:
+        {{- if $.Values.storage.db.className }}
+        storageClassName: "{{ $.Values.storage.db.className }}"
+        {{- end }}
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $.Values.storage.db.claimSize }}
+{{- end }}

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" . }}-cfgsvc"
+  labels:
+    {{- include "mongodb-cluster-demo.labels" . | nindent 4 }}
+    role: mongo-cfg
+spec:
+  clusterIP: None
+  type: {{ .Values.service.cfg.type }}
+  ports:
+    - name: {{ .Values.service.cfg.ports.name }}
+      port: {{ .Values.service.cfg.ports.port }}
+      targetPort: {{ .Values.service.cfg.ports.port }}
+      protocol: TCP
+  selector:
+    {{- include "mongodb-cluster-demo.labels" . | nindent 4 }}
+    role: mongo-cfg

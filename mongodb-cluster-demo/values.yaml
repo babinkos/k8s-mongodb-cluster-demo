@@ -1,0 +1,139 @@
+# Default values for mongodb-cluster-demo.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicas: 
+  db:
+    count: 3
+  cfg:
+    count: 3
+  router:
+    count: 3
+shardsCount: 2
+minAvailable:
+  db: 2
+  cfg: 2
+  router: 1
+
+image:
+  repository: mongo
+  # see .Chart.AppVersion
+  #tag: '4.2-bionic'
+  pullPolicy: IfNotPresent
+exporter_image:
+  pullPolicy: IfNotPresent
+  repository: ssheehy/mongodb-exporter
+  tag: 0.10.0
+
+storage:
+  db:
+    className: ''
+    claimSize: "2Gi"
+    oplogSizeM: "990"
+  cfg:
+    className: ''
+    claimSize: "2Gi"
+    oplogSizeM: "990"
+
+cacheSizeGB:
+  db: "0.25"
+  cfg: "0.25"
+
+config_rs: 'cfgrs0'
+db_rs: 'dbrs'
+
+exporter_port: "9216"
+serviceMonitor:
+  enabled: true
+  namespace: "monitoring"
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels: {}
+  targetLabels: []
+  metricRelabelings: []
+extraArgs:
+- --collect.collection
+- --collect.database
+- --collect.indexusage
+- --collect.topmetrics
+- --collect.connpoolstats
+
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name:
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  db:
+    type: ClusterIP
+    ports:
+      name: db
+      port: 27018
+  cfg:
+    type: ClusterIP
+    ports:
+      name: cfg
+      port: 27019
+  router:
+    type: ClusterIP
+    ports:
+      name: router
+      port: 27017
+    annotations: {}
+    #  in case of LoadBalancer if you don't need to expose cluster outside of K8s - remove empty/placeholder value and uncomment appropriate one - it then will not use real IP as external but will use address from private subnet
+      # service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+      # service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+      # cloud.google.com/load-balancer-type: "Internal"
+      # service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+
+# We don't need ingresses really, because we have LoadBalancer service to access mongos via externalIp, in case of microk8s just use metallb add-on
+# if you insist to use ingress to publish TCP ports - add them to ingress controller pod spec ports list , and prepare ConfigMap :
+# see https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services/
+# and https://minikube.sigs.k8s.io/docs/tutorials/nginx_tcp_udp_ingress/
+ingress:
+  enabled: false
+  #controller-ns: 'ingress-nginx'
+  # in case of microk8s its just ingress
+  controllerNs: 'ingress'
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

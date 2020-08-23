@@ -1,0 +1,42 @@
+{{- range $i, $e := until ($.Values.shardsCount | int) }}
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db"
+  namespace: {{ $.Release.Namespace }}
+spec:
+  minAvailable: {{ $.Values.minAvailable.db }}
+  selector:
+    matchLabels:
+      {{- include "mongodb-cluster-demo.labels" $ | nindent 6 }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      role: mongo-db
+      shard: "{{ $i }}"
+{{- end }}
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" . }}-cfg"
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.minAvailable.cfg }}
+  selector:
+    matchLabels:
+      {{- include "mongodb-cluster-demo.labels" . | nindent 6 }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      role: mongo-cfg
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" . }}-router"
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.minAvailable.router }}
+  selector:
+    matchLabels:
+      {{- include "mongodb-cluster-demo.labels" . | nindent 6 }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      role: mongo-router

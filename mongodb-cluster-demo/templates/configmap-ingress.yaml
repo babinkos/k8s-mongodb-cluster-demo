@@ -1,0 +1,14 @@
+{{- if .Values.ingress.enabled -}}
+# if you really need to use ingress to publish TCP ports - add them to ingress controller pod spec ports list :
+# see https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services/
+# and https://minikube.sigs.k8s.io/docs/tutorials/nginx_tcp_udp_ingress/
+#
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: tcp-services
+#   namespace: {{ .Values.ingress.controllerNs }}
+# data:
+#   27017: "{{ .Release.Namespace }}/{{ include "mongodb-cluster-demo.fullname" $ }}-0:{{ .Values.service.router.ports.port }}"
+#   27018: "{{ .Release.Namespace }}/{{ include "mongodb-cluster-demo.fullname" $ }}-1:{{ .Values.service.router.ports.port }}"
+{{- end }}

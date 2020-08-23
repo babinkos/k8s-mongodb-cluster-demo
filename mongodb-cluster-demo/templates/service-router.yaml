@@ -1,0 +1,34 @@
+{{- range $i, $e := until ($.Values.replicas.router.count | int) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ include "mongodb-cluster-demo.fullname" $ }}-{{ $i }}"
+  labels:
+    {{- include "mongodb-cluster-demo.labels" $ | nindent 4 }}
+  {{- if $.Values.service.router.annotations }}
+  {{- with $.Values.service.router.annotations }}
+  annotations:
+    {{- toYaml $ | nindent 4 }}
+  {{- end }}
+  {{- end }}
+spec:
+  type: LoadBalancer
+  {{- $nodes := (lookup "v1" "Node" "" "").items }}
+  {{- if $nodes }}
+      #Nodes count: {{- len $nodes }}
+    {{- if gt (len $nodes | int) 1 }}
+  externalTrafficPolicy: Local
+    {{- end }}
+  {{- end }}
+  selector:
+    statefulset.kubernetes.io/pod-name: "{{ include "mongodb-cluster-demo.fullname" $ }}-router-{{ $i }}"
+    {{- include "mongodb-cluster-demo.selectorLabels" $ | nindent 4 }}
+  ports:
+    - name: {{ $.Values.service.router.ports.name }}
+      port: {{ $.Values.service.router.ports.port }}
+      targetPort: {{ $.Values.service.router.ports.port }}
+      protocol: TCP
+  # selector:
+    
+{{- end }}
