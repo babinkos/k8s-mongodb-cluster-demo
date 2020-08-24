@@ -1,4 +1,3 @@
-
 {{- $jobName := printf "%s-%s" ( printf "%s-job" ( include "mongodb-cluster-demo.fullname" $ ) ) (uuidv4 | sha256sum | trunc 8) | trunc 63 | trimSuffix "-" }}
 ---
 apiVersion: batch/v1
@@ -46,12 +45,12 @@ spec:
           - "-c"
           - |
             set -ex
-            CFGLAST={{ include "mongodb-cluster-demo.fullname" $ }}-cfg{{ ( .Values.replicas.cfg.count | int64 | sub 1 | toString ) }}.{{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
-            ROUTERLAST={{ include "mongodb-cluster-demo.fullname" $ }}-router{{ ( .Values.replicas.router.count | int64 | sub 1 | toString ) }}.{{ include "mongodb-cluster-demo.fullname" $ }}-routersvc.{{ $.Release.Namespace }}.svc.cluster.local
+            CFGLAST={{ include "mongodb-cluster-demo.fullname" $ }}-cfg-{{ ( sub 1 ( .Values.replicas.cfg.count | int64 ) ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
+            ROUTERLAST={{ include "mongodb-cluster-demo.fullname" $ }}-router-{{ sub 1 ( .Values.replicas.router.count | int64 ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-routersvc.{{ $.Release.Namespace }}.svc.cluster.local
             timeout 5m sh -c "until nc -z -w 1 $ROUTERLAST {{ .Values.service.router.ports.port }}; do (echo -n . ; sleep 1s); done; echo router-svc reached"
             timeout 5m sh -c "until nc -z -w 1 $CFGLAST {{ .Values.service.cfg.ports.port }}; do (echo -n . ; sleep 1s); done; echo cfg-svc reached"
         {{- range $i, $e := until ($.Values.shardsCount | int) }}
-            DBLAST={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db{{ ( $.Values.replicas.db.count | int64 | sub 1 | toString ) }}.{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
+            DBLAST={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db-{{ ( sub 1 ( $.Values.replicas.db.count | int64 ) ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
             timeout 5m sh -c "until nc -z -w 1 $DBLAST {{ $.Values.service.db.ports.port }}; do (echo -n _ ; sleep 1s); done; echo db-svc {{ $i }} reached"
         {{- end }}
       containers:
