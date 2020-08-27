@@ -14,6 +14,11 @@ minAvailable:
   db: 2
   cfg: 2
   router: 1
+clstAdminName: 'clstadmin'
+exporterUserName: 'mongodb_exporter'
+dbName: 'testdb'
+dbUserName: 'test'
+dbRoleName: 'TEMPCOLLROLE'
 
 image:
   repository: mongo

@@ -59,7 +59,8 @@ as well by this publications:
 - http://pauldone.blogspot.com/2017/06/deploying-mongodb-on-kubernetes-gke25.html
 
 
-## Tested on Ubuntu Linux using https://microk8s.io/ snap (v1.18.6) singe node and multi-node cluster (https://microk8s.io/docs/clustering) made with LXD
+## Tested on 
+Ubuntu Linux using https://microk8s.io/ snap (v1.18.6) singe node and multi-node cluster (https://microk8s.io/docs/clustering) made with LXD
 microk8s add-ons list:
 - dns
 - metallb
@@ -73,4 +74,7 @@ optional add-ons:
 - dashboard
 
 ## Usefull hints
-How-to check pod affinity : kubectl get pod -o=custom-columns=NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName -n mongodb
+How-to check pod affinity : 
+```
+kubectl get pod -o=custom-columns=NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName -n mongodb
+```

@@ -67,30 +67,6 @@ spec:
           {{- end }}
         {{- end }}
       {{- end }}
-      initContainers:
-      - name: init
-        securityContext:
-          runAsUser: 0
-          runAsGroup: 0
-          # privileged: true
-        image: busybox:latest
-        command:
-          - '/bin/ash'
-          - '-c'
-          - |
-            ls -l /data
-            owner=""
-            [ ! "$(id -u $(stat -c "%U" /data/db))" == "999" ] && owner="999"
-            [ ! "$(id -g $(stat -c "%G" /data/db))" == "999" ] && owner="${owner}:999"
-            [ ! -z "$owner" ] && chown -R 999:999 /data/db
-            ls -l /data
-            [ "$(sysctl net.ipv4.tcp_keepalive_time | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_time=180  || true
-            [ "$(sysctl net.ipv4.tcp_keepalive_intvl | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_intvl=180  || true
-            [ "$(sysctl net.ipv4.tcp_keepalive_probes | cut -d'=' -f2 | tr -d ' ')" -ne 4 ] && sysctl -w net.ipv4.tcp_keepalive_probes=4  || true
-            [ "$(sysctl vm.swappiness | cut -d"=" -f2 | cut -d" " -f2)" -lt 1 ] && sysctl -w vm.max_map_count=1 || true
-        volumeMounts:
-          - name: mongodb-persistent-storage
-            mountPath: /data/db
       volumes:
       - name: keyfiles
         secret:
@@ -99,6 +75,133 @@ spec:
             items:
             - key: key1
               path: keyfile
+      initContainers:
+      # - name: init
+      #   securityContext:
+      #     runAsUser: 0
+      #     runAsGroup: 0
+      #     # privileged: true
+      #   image: busybox:latest
+      #   command:
+      #     - '/bin/ash'
+      #     - '-c'
+      #     - |
+      #       ls -l /data
+      #       owner=""
+      #       [ ! "$(id -u $(stat -c "%U" /data/db))" == "999" ] && owner="999"
+      #       [ ! "$(id -g $(stat -c "%G" /data/db))" == "999" ] && owner="${owner}:999"
+      #       [ ! -z "$owner" ] && chown -R 999:999 /data/db
+      #       ls -l /data
+      #       [ "$(sysctl net.ipv4.tcp_keepalive_time | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_time=180  || true
+      #       [ "$(sysctl net.ipv4.tcp_keepalive_intvl | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_intvl=180  || true
+      #       [ "$(sysctl net.ipv4.tcp_keepalive_probes | cut -d'=' -f2 | tr -d ' ')" -ne 4 ] && sysctl -w net.ipv4.tcp_keepalive_probes=4  || true
+      #       [ "$(sysctl vm.swappiness | cut -d"=" -f2 | cut -d" " -f2)" -lt 1 ] && sysctl -w vm.max_map_count=1 || true
+      #   volumeMounts:
+      #     - name: mongodb-persistent-storage
+      #       mountPath: /data/db
+      - name: mongo-pwd
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+        image: "{{ $.Values.image.repository }}:{{ $.Chart.AppVersion }}"
+        imagePullPolicy: {{ $.Values.image.pullPolicy }}
+        command:
+          - 'bash'
+          - '-c'
+          - |
+            set -ex
+            owner=""
+            DBPATH="/data/db"
+            [ ! "$(id -u $(stat -c "%U" $DBPATH))" == "999" ] && owner="999"
+            [ ! "$(id -g $(stat -c "%G" $DBPATH))" == "999" ] && owner="${owner}:999"
+            [ ! -z "$owner" ] && chown -R 999:999 $DBPATH
+            ls -l /data
+            [ "$(sysctl net.ipv4.tcp_keepalive_time | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_time=180  || true
+            [ "$(sysctl net.ipv4.tcp_keepalive_intvl | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_intvl=180  || true
+            [ "$(sysctl net.ipv4.tcp_keepalive_probes | cut -d'=' -f2 | tr -d ' ')" -ne 4 ] && sysctl -w net.ipv4.tcp_keepalive_probes=4  || true
+            [ "$(sysctl vm.swappiness | cut -d"=" -f2 | cut -d" " -f2)" -lt 1 ] && sysctl -w vm.max_map_count=1 || true
+            sleep 1s
+            echo "app started at $(date -u)" | tee -a /tmp/prestop.log
+            if [ "${MY_POD_NAME//*-}" == "0" ] ; then
+              if [ ! -f "$DBPATH/pwdset" ] ; then
+                touch "$DBPATH/pwdset"
+                cp /secret/keyfile /tmp/keyfile
+                chmod 400 /tmp/keyfile
+                which nc || apt update && apt install -y netcat
+                mongod --replSet {{ $.Values.db_rs }}{{ $i }} --shardsvr --wiredTigerCacheSizeGB {{ $.Values.cacheSizeGB.db }} --bind_ip 127.0.0.1 --port {{ $.Values.service.db.ports.port }} --dbpath $DBPATH --transitionToAuth --keyFile=/tmp/keyfile &
+                sleep 1s
+                
+                USERNAME={{ $.Values.clstAdminName }}-shardlocal
+                set -x
+                USERPASS="$ADM_PASS"
+                HOST='127.0.0.1'
+                FULLHOST={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db-0.{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local:{{ $.Values.service.db.ports.port }}
+                CONNSTR="mongodb://$USERNAME:$USERPASS@$HOST:{{ $.Values.service.db.ports.port }}/admin"
+                CONNSTR2="mongodb://$HOST:{{ $.Values.service.db.ports.port }}/admin"
+                timeout 15s sh -c "until nc -z -w 1 $HOST {{ $.Values.service.db.ports.port }}; do (echo -n . ; sleep 1s); done; echo db-svc reached"
+                ERRCODE=0
+                RES=$(mongo $CONNSTR2  --quiet --eval 'db.getUsers();') || ERRCODE=$?
+                echo "RES: $RES , ERRCODE: $ERRCODE"
+                if [ $ERRCODE -ne 0 ] ; then
+                  cat /etc/hosts
+                  echo "$HOST $(echo $FULLHOST | cut -d':' -f1)" >> /etc/hosts
+                  cat /etc/hosts
+
+                  if [ ! "$(echo $RES | fgrep -c "admin.$USERNAME" )" == 1 ] ; then
+                    mongo $CONNSTR2  --quiet --eval "rs.initiate( { _id : \"{{ $.Values.db_rs }}{{ $i }}\", members: [ { _id : 0, host : \"$FULLHOST\" } ] } )"
+                    timeout 5m sh -c "set -ex ; until ( echo $(mongo $CONNSTR2 --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n . ; sleep 2s); done; echo db-svc rs.status good"
+                    sleep 2s
+                    mongo $CONNSTR2 --quiet --eval 'rs.status()'
+                    mongo $CONNSTR2 --quiet --eval "db.createUser( { user: \"$USERNAME\", pwd: \"$USERPASS\", roles: [ { role: \"root\", db: \"admin\" } ], \"mechanisms\": [ \"SCRAM-SHA-1\", \"SCRAM-SHA-256\" ] } );"
+
+                  else
+                    echo $RES
+                    ERRCODE2=0
+                    RES2=$(mongo $CONNSTR  --quiet --eval 'db.getUsers();') || ERRCODE2=$?
+                    echo "RES2: $RES2 , ERRCODE2: $ERRCODE2"
+                  fi
+                  USERNAME={{ $.Values.exporterUserName }}
+                  USERPASS="$MONITORING_PASS"
+                  if [ ! "$(echo $RES | fgrep -c "admin.$USERNAME" )" == 1 ] ; then
+                    mongo $CONNSTR2  --quiet --eval "db.createUser( { user: \"$USERNAME\", pwd: \"$USERPASS\", roles: [ { role: \"clusterMonitor\", db: \"admin\" }, { role: \"read\", db: \"local\" } ], \"mechanisms\": [ \"SCRAM-SHA-1\", \"SCRAM-SHA-256\" ] } );"
+                  else
+                    echo $RES
+                  fi
+                else
+                  ERRCODE2=0
+                  RES2=$(mongo $CONNSTR  --quiet --eval 'db.getUsers();') || ERRCODE2=$?
+                  echo "result ERRCODE2: $ERRCODE2"
+                  echo "RES2: $RES2"
+                fi
+                kill $(pgrep mongod)
+                timeout 5m sh -c 'while ( pgrep mongod > /dev/null ) ; do (echo -n . ; sleep 1s); done; echo finished'
+                chown -R 999:999 $DBPATH
+              else
+                echo "pwd already set"
+              fi
+            fi
+        env:
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: ADM_PASS
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "mongodb-cluster-demo.fullname" $ }}-dbsecrets"
+                key: dbaPassword
+          - name: MONITORING_PASS
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "mongodb-cluster-demo.fullname" $ }}-dbsecrets"
+                key: monitoringPassword
+        volumeMounts:
+          - name: mongodb-persistent-storage
+            mountPath: /data/db
+          - name: keyfiles
+            mountPath: /secret/keyfile
+            subPath: keyfile
+            readOnly: true
       containers:
       - name: mongo
         image: "{{ $.Values.image.repository }}:{{ $.Chart.AppVersion }}"
@@ -115,7 +218,7 @@ spec:
             cp /secret/keyfile /tmp/keyfile
             chmod 400 /tmp/keyfile
             ls -l /tmp/keyfile
-            mongod --replSet {{ $.Values.db_rs }}{{ $i }} --shardsvr --wiredTigerCacheSizeGB {{ $.Values.cacheSizeGB.db }} --bind_ip_all --port {{ $.Values.service.db.ports.port }} --dbpath /data/db  --transitionToAuth --keyFile=/tmp/keyfile
+            mongod --replSet {{ $.Values.db_rs }}{{ $i }} --shardsvr --wiredTigerCacheSizeGB {{ $.Values.cacheSizeGB.db }} --bind_ip_all --port {{ $.Values.service.db.ports.port }} --dbpath /data/db --auth --keyFile=/tmp/keyfile
             EXCODE="$?"
             echo "app finished at $(date -u)" | tee -a /tmp/prestop.log
             echo "app finished, result code: $EXCODE"
@@ -182,10 +285,24 @@ spec:
             value: "5"
           - name: MONGO_SIDECAR_UNHEALTHY_SECONDS
             value: "15"
+          - name: MONGODB_DATABASE
+            value: admin
+          - name: MONGODB_USERNAME
+            value: "{{ $.Values.clstAdminName }}-shardlocal"
+          - name: MONGODB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "mongodb-cluster-demo.fullname" $ }}-dbsecrets"
+                key: dbaPassword
       - name: mongodb-exporter
         env:
+          - name: MONGODB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "mongodb-cluster-demo.fullname" $ }}-dbsecrets"
+                key: monitoringPassword
           - name: MONGODB_URI
-            value: "mongodb://127.0.0.1:{{ $.Values.service.db.ports.port }}"
+            value: "mongodb://{{ $.Values.exporterUserName }}:$MONGODB_PASSWORD@127.0.0.1:{{ $.Values.service.db.ports.port }}"
         {{- if $.Values.env }}
         {{- range $key, $value := $.Values.env }}
           - name: "{{ $key }}"
