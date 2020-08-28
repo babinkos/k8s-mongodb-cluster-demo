@@ -25,6 +25,7 @@ Among other things configured:
 
 # Deployment instructions
 1. Verify values.yaml to meet your environment
+
    1.1 Adjust Prometheus operator namespace name if needed.
 In case you namespace name differs from "monitoring" (microk8s addon default) - just override it with:
 ```
@@ -62,7 +63,7 @@ as well by this publications:
 - http://blog.kubernetes.io/2017/01/running-mongodb-on-kubernetes-with-statefulsets.html
 - http://pauldone.blogspot.com/2017/06/deploying-mongodb-on-kubernetes-gke25.html
 
-All chart templates was made from scratch. Sidecar in nodejs is a bit outdated (regarding auth and Mongo client) and reports warning in log constantly.
+All chart templates was made from scratch. Sidecar in nodejs is a bit outdated (regarding auth and Mongo client) and report warning in log constantly.
 
 ## Tested on 
 Ubuntu Linux using https://microk8s.io/ snap (v1.18.6) singe node and multi-node cluster (https://microk8s.io/docs/clustering) made with LXD
