@@ -6,9 +6,11 @@ This chart will create StatefullSets for:
 - ConfigServer replicaset (of 3),
 - 2 DB Shards each as replicaset (of 3),
 - 3 instances of mongos router
+
 Then it will configure:
 - 3 LoadBalacer services for each mongos router (in case of microk8s we can just run metallb addon with LAN adresses configured to get ExternalIP working)
 - Shards replica info will be added with K8s Job (in case it was not done earlier and not listed in sh.status() output)
+
 Among other things configured:
 - Secret with passwords for mongodb
 - Secret with MongoDB KeyFile (used in mongo instances), existing one will be reused on re-deployment
@@ -23,12 +25,12 @@ Among other things configured:
 
 # Deployment instructions
 1. Verify values.yaml to meet your environment
-   - Adjust Prometheus operator namespace name if needed.
+   1.1 Adjust Prometheus operator namespace name if needed.
 In case you namespace name differs from "monitoring" (microk8s addon default) - just override it with:
 ```
 serviceMonitor.namespace="<Prometheus namespacename>"
 ```
-   - In case you Prometheus deployed not with operator, ServiceMonitor need to be disabled and annotations will be populated with:
+   1.2 In case you Prometheus deployed not with operator, ServiceMonitor need to be disabled and annotations will be populated with:
 ```
 serviceMonitor.enabled=false
 ```
@@ -60,6 +62,7 @@ as well by this publications:
 - http://blog.kubernetes.io/2017/01/running-mongodb-on-kubernetes-with-statefulsets.html
 - http://pauldone.blogspot.com/2017/06/deploying-mongodb-on-kubernetes-gke25.html
 
+All chart templates was made from scratch. Sidecar in nodejs is a bit outdated (regarding auth and Mongo client) and reports warning in log constantly.
 
 ## Tested on 
 Ubuntu Linux using https://microk8s.io/ snap (v1.18.6) singe node and multi-node cluster (https://microk8s.io/docs/clustering) made with LXD
@@ -78,5 +81,5 @@ optional add-ons:
 ## Usefull hints
 How-to check pod affinity : 
 ```
-kubectl get pod -o=custom-columns=NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName -n mongodb
+kubectl get pod -o=custom-columns=NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName [--namespace <namespacename>]
 ```
