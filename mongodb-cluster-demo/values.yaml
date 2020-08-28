@@ -15,10 +15,9 @@ minAvailable:
   cfg: 2
   router: 1
 clstAdminName: 'clstadmin'
+# shard local admin will have similar name but with suffix '-shardlocal', i.e "clstadmin-shardlocal"
 exporterUserName: 'mongodb_exporter'
-dbName: 'testdb'
-dbUserName: 'test'
-dbRoleName: 'TEMPCOLLROLE'
+
 
 image:
   repository: mongo

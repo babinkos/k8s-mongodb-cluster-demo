@@ -1,4 +1,11 @@
-1. Get the application URL by running these commands:
-{{- if .Values.ingress.enabled }}
+1. Get the MongoDB cluster endpoints from K8s loadbalancer by running these commands ( use bash shell ):
 
-{{- end }}
+ pass="{{ $.dbaPassword | b64dec }}" ; name="{{ .Values.clstAdminName }}" ; str="mongodb://$name:$pass@" ; for i in $( kubectl get svc -n {{ $.Release.Namespace }}| grep -v "<none>" | grep "{{ include "mongodb-cluster-demo.fullname" . }}" | awk '{ print $4 }' ) ; do str="$str$i," ; done ; CONNSTR=${str%","}
+mongo $CONNSTR --quiet --eval 'sh.status();'
+
+
+To uninstall everything just run:
+
+helm uninstall --debug {{ .Release.Name }} --namespace {{ $.Release.Namespace }} ; sleep 5s ; kuk delete pvc --all ; kubectl delete secret/{{ include "mongodb-cluster-demo.fullname" . }}-dbsecrets -n {{ $.Release.Namespace }} ; kubectl delete secret/{{ include "mongodb-cluster-demo.fullname" . }}-keys -n {{ $.Release.Namespace }}
+
+.

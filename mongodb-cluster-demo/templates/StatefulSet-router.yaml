@@ -68,22 +68,7 @@ spec:
             - key: key1
               path: keyfile
       initContainers:
-      # - name: startup
-      #   image: busybox:latest
-      #   command:
-      #     - sh
-      #     - "-c"
-      #     - |
-      #       set -ex
-      #       CFGLAST={{ include "mongodb-cluster-demo.fullname" $ }}-cfg-{{ ( sub 1 ( .Values.replicas.cfg.count | int64 ) ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
-      #       ROUTERLAST={{ include "mongodb-cluster-demo.fullname" $ }}-router-{{ sub 1 ( .Values.replicas.router.count | int64 ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-routersvc.{{ $.Release.Namespace }}.svc.cluster.local
-      #       timeout 5m sh -c "until nc -z -w 1 $ROUTERLAST {{ .Values.service.router.ports.port }}; do (echo -n . ; sleep 1s); done; echo router-svc reached"
-      #       timeout 5m sh -c "until nc -z -w 1 $CFGLAST {{ .Values.service.cfg.ports.port }}; do (echo -n . ; sleep 1s); done; echo cfg-svc reached"
-      #   {{- range $i, $e := until ($.Values.shardsCount | int) }}
-      #       DBLAST={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db-{{ ( sub 1 ( $.Values.replicas.db.count | int64 ) ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
-      #       timeout 5m sh -c "until nc -z -w 1 $DBLAST {{ $.Values.service.db.ports.port }}; do (echo -n _ ; sleep 1s); done; echo db-svc {{ $i }} reached"
-      #   {{- end }}
-      - name: mongo-pwd
+      - name: startup
         securityContext:
           runAsUser: 0
           runAsGroup: 0
@@ -109,35 +94,13 @@ spec:
               timeout 5m sh -c "until nc -z -w 1 $DBLAST {{ $.Values.service.db.ports.port }}; do (echo -n _ ; sleep 1s); done; echo db-svc {{ $i }} reached"
           {{- end }}
               CFGSVC={{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
-              #timeout 5m sh -c "until ( echo $(mongo mongodb://$USERNAME:$USERPASS@$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n . ; sleep 2s); done; echo cfg-svc rs.status good"
-              #mongo mongodb://$USERNAME:$USERPASS@$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status()'
-            {{- range $i, $e := until ($.Values.shardsCount | int) }}
+              timeout 5m sh -c "until ( echo $(mongo mongodb://$USERNAME:$USERPASS@$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n . ; sleep 2s); done; echo cfg-svc rs.status good"
+              mongo mongodb://$USERNAME:$USERPASS@$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status()'
+            {{- range $i, $e := until ( $.Values.shardsCount | int ) }}
               DBSVC={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
-              #timeout 5m sh -c "until ( echo $(mongo mongodb://$USERNAME:$USERPASS@$DBSVC:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n _ ; sleep 2s); done; echo shard{{ $i }}-svc rs.status good"
-              #mongo mongodb://$USERNAME:$USERPASS@$DBSVC:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status()'
+              timeout 5m sh -c "until ( echo $(mongo mongodb://${USERNAME}-shardlocal:${USERPASS}@${DBSVC}:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n _ ; sleep 2s); done; echo shard{{ $i }}-svc rs.status good"
+              mongo mongodb://${USERNAME}-shardlocal:${USERPASS}@${DBSVC}:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status()'
             {{- end }}
-              cp /secret/keyfile /tmp/keyfile
-              chmod 400 /tmp/keyfile
-              mongos --configdb {{ include "mongodb-cluster-demo.configstr" . }} --bind_ip 127.0.0.1 --port {{ $.Values.service.router.ports.port }} --keyFile=/tmp/keyfile &
-              sleep 1s
-              HOST='127.0.0.1'
-              timeout 15s sh -c "until nc -z -w 1 $HOST {{ .Values.service.router.ports.port }}; do (echo -n . ; sleep 1s); done; echo router-svc reached"
-              CONNSTR="mongodb://$USERNAME:$USERPASS@$HOST:{{ $.Values.service.router.ports.port }}/admin"
-              RES=$(mongo $CONNSTR --quiet --eval 'db.getUsers();')
-              if [ ! "$(echo $RES | fgrep -c "admin.$USERNAME" )" == 1 ] ; then
-                mongo $CONNSTR --quiet --eval "db.createUser( { user: \"$USERNAME\", pwd: \"$USERPASS\", roles: [ { role: \"root\", db: \"admin\" } ], \"mechanisms\": [ \"SCRAM-SHA-256\" ] } );"
-              else
-                echo $RES
-              fi
-              USERNAME={{ $.Values.exporterUserName }}
-              USERPASS="$MONITORING_PASS"
-              if [ ! "$(echo $RES | fgrep -c "admin.$USERNAME" )" == 1 ] ; then
-                mongo $CONNSTR --quiet --eval "db.createUser( { user: \"$USERNAME\", pwd: \"$USERPASS\", roles: [ { role: \"clusterMonitor\", db: \"admin\" }, { role: \"read\", db: \"local\" } ], \"mechanisms\": [ \"SCRAM-SHA-256\" ] } );"
-              else
-                echo $RES
-              fi
-              kill $(pgrep mongos)
-              timeout 30s sh -c 'while ( pgrep mongos > /dev/null ) ; do (echo -n . ; sleep 1s); done; echo finished'
             fi
         env:
           - name: MY_POD_NAME

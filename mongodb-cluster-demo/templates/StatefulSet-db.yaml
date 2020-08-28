@@ -76,29 +76,6 @@ spec:
             - key: key1
               path: keyfile
       initContainers:
-      # - name: init
-      #   securityContext:
-      #     runAsUser: 0
-      #     runAsGroup: 0
-      #     # privileged: true
-      #   image: busybox:latest
-      #   command:
-      #     - '/bin/ash'
-      #     - '-c'
-      #     - |
-      #       ls -l /data
-      #       owner=""
-      #       [ ! "$(id -u $(stat -c "%U" /data/db))" == "999" ] && owner="999"
-      #       [ ! "$(id -g $(stat -c "%G" /data/db))" == "999" ] && owner="${owner}:999"
-      #       [ ! -z "$owner" ] && chown -R 999:999 /data/db
-      #       ls -l /data
-      #       [ "$(sysctl net.ipv4.tcp_keepalive_time | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_time=180  || true
-      #       [ "$(sysctl net.ipv4.tcp_keepalive_intvl | cut -d'=' -f2 | tr -d ' ')" -ne 180 ] && sysctl -w net.ipv4.tcp_keepalive_intvl=180  || true
-      #       [ "$(sysctl net.ipv4.tcp_keepalive_probes | cut -d'=' -f2 | tr -d ' ')" -ne 4 ] && sysctl -w net.ipv4.tcp_keepalive_probes=4  || true
-      #       [ "$(sysctl vm.swappiness | cut -d"=" -f2 | cut -d" " -f2)" -lt 1 ] && sysctl -w vm.max_map_count=1 || true
-      #   volumeMounts:
-      #     - name: mongodb-persistent-storage
-      #       mountPath: /data/db
       - name: mongo-pwd
         securityContext:
           runAsUser: 0

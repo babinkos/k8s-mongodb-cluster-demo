@@ -10,8 +10,10 @@ Then it will configure:
 - 3 LoadBalacer services for each mongos router (in case of microk8s we can just run metallb addon with LAN adresses configured to get ExternalIP working)
 - Shards replica info will be added with K8s Job (in case it was not done earlier and not listed in sh.status() output)
 Among other things configured:
-- Secret with passwords for mongodb (not used yet)
+- Secret with passwords for mongodb
 - Secret with MongoDB KeyFile (used in mongo instances), existing one will be reused on re-deployment
+
+! Keep in mind that secret will remain after Helm release uninstall, please remove it manually if needed.
 
 ## Default values explanation
 - PVC size set to 2GB by default for each cfg/db mongod container (adjust storage.*.claimSize value accordingly)
