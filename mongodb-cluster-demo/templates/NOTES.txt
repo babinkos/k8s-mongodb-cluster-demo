@@ -6,6 +6,6 @@ mongo $CONNSTR --quiet --eval 'sh.status();'
 
 To uninstall everything just run:
 
-helm uninstall --debug {{ .Release.Name }} --namespace {{ $.Release.Namespace }} ; sleep 5s ; kuk delete pvc --all ; kubectl delete secret/{{ include "mongodb-cluster-demo.fullname" . }}-dbsecrets -n {{ $.Release.Namespace }} ; kubectl delete secret/{{ include "mongodb-cluster-demo.fullname" . }}-keys -n {{ $.Release.Namespace }}
+helm uninstall --debug {{ .Release.Name }} --namespace {{ $.Release.Namespace }} ; sleep 5s ; kubectl delete pvc --all -n {{ $.Release.Namespace }} ; kubectl delete secret/{{ include "mongodb-cluster-demo.fullname" . }}-dbsecrets -n {{ $.Release.Namespace }} ; kubectl delete secret/{{ include "mongodb-cluster-demo.fullname" . }}-keys -n {{ $.Release.Namespace }}
 
 .
