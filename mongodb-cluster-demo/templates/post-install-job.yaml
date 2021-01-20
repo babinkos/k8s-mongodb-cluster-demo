@@ -12,12 +12,12 @@ metadata:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
     # comment lines below to debug and check logs
-    #"helm.sh/hook": post-install,post-upgrade
-    #"helm.sh/hook-weight": "-3"
-    #"helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-3"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
 spec:
   ttlSecondsAfterFinished: 90
-  backoffLimit: 1
+  backoffLimit: 0
   activeDeadlineSeconds: 900
   completions: 1
   parallelism: 1
@@ -45,12 +45,12 @@ spec:
           - "-c"
           - |
             set -ex
-            CFGLAST={{ include "mongodb-cluster-demo.fullname" $ }}-cfg-{{ ( sub 1 ( .Values.replicas.cfg.count | int64 ) ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
-            ROUTERLAST={{ include "mongodb-cluster-demo.fullname" $ }}-router-{{ sub 1 ( .Values.replicas.router.count | int64 ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-routersvc.{{ $.Release.Namespace }}.svc.cluster.local
+            CFGLAST={{ include "mongodb-cluster-demo.fullname" $ }}-cfg-{{ ( sub ( .Values.replicas.cfg.count | int64 ) 1 ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
+            ROUTERLAST={{ include "mongodb-cluster-demo.fullname" $ }}-router-{{ ( sub ( .Values.replicas.router.count | int64 ) 1 )  | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-routersvc.{{ $.Release.Namespace }}.svc.cluster.local
             timeout 5m sh -c "until nc -z -w 1 $ROUTERLAST {{ .Values.service.router.ports.port }}; do (echo -n . ; sleep 1s); done; echo router-svc reached"
             timeout 5m sh -c "until nc -z -w 1 $CFGLAST {{ .Values.service.cfg.ports.port }}; do (echo -n . ; sleep 1s); done; echo cfg-svc reached"
         {{- range $i, $e := until ($.Values.shardsCount | int) }}
-            DBLAST={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db-{{ ( sub 1 ( $.Values.replicas.db.count | int64 ) ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
+            DBLAST={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-db-{{ ( sub ( $.Values.replicas.db.count | int64 ) 1 ) | toString }}.{{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
             timeout 5m sh -c "until nc -z -w 1 $DBLAST {{ $.Values.service.db.ports.port }}; do (echo -n _ ; sleep 1s); done; echo db-svc {{ $i }} reached"
         {{- end }}
       containers:
@@ -63,26 +63,69 @@ spec:
           - |
             set -ex
             echo "app started at $(date -u)"
-            printenv | fgrep Pass
+            USERNAME='{{ .Values.clstAdminName }}'
+            USERPASS=$dbaPassword
             CFGSVC={{ include "mongodb-cluster-demo.fullname" $ }}-cfgsvc.{{ $.Release.Namespace }}.svc.cluster.local
-            timeout 5m sh -c "until ( echo $(mongo mongodb://$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n . ; sleep 2s); done; echo cfg-svc rs.status good"
-            mongo mongodb://$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status()'
+            timeout 5m sh -c "until ( echo $(mongo mongodb://$USERNAME:$USERPASS@$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n . ; sleep 2s); done; echo cfg-svc rs.status good"
+            mongo mongodb://$USERNAME:$USERPASS@$CFGSVC:{{ .Values.service.cfg.ports.port }} --quiet --eval 'rs.status()'
           {{- range $i, $e := until ($.Values.shardsCount | int) }}
             DBSVC={{ include "mongodb-cluster-demo.fullname" $ }}-shard{{ $i }}-dbsvc.{{ $.Release.Namespace }}.svc.cluster.local
-            timeout 5m sh -c "until ( echo $(mongo mongodb://$DBSVC:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n _ ; sleep 2s); done; echo shard{{ $i }}-svc rs.status good"
-            mongo mongodb://$DBSVC:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status()'
+            timeout 5m sh -c "until ( echo $(mongo mongodb://{{ $.Values.clstAdminName }}-shardlocal:$USERPASS@$DBSVC:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status().ok') | fgrep 1 ) ; do (echo -n _ ; sleep 2s); done; echo shard{{ $i }}-svc rs.status good"
+            mongo mongodb://{{ $.Values.clstAdminName }}-shardlocal:$USERPASS@$DBSVC:{{ $.Values.service.db.ports.port }} --quiet --eval 'rs.status()'
           {{- end }}
             HOST={{ include "mongodb-cluster-demo.fullname" $ }}-routersvc.{{ $.Release.Namespace }}.svc.cluster.local
-            STATUS=$(mongo $HOST --quiet --eval 'sh.status()')
-            set -e +x
+            CONNSTR="${USERNAME}:${USERPASS}@${HOST}"
+            STATUS=$(mongo mongodb://$CONNSTR --quiet --eval 'sh.status()')
+            set -ex
             echo $STATUS | fgrep -c {{ $.Values.db_rs }} || true
           {{- range $i, $e := until ($.Values.shardsCount | int) }}
           {{- $_ := set $ "shardIndex" $i }}
             if [ ! $( echo $STATUS | fgrep -c {{ $.Values.db_rs }}{{ $i }} ) == 1 ] ; then
-              mongo $HOST --quiet --eval "sh.addShard(\"{{ include "mongodb-cluster-demo.dbstr" $ }}\")"
+              mongo mongodb://$CONNSTR --quiet --eval "sh.addShard(\"{{ include "mongodb-cluster-demo.dbstr" $ }}\")"
             fi
           {{- end }}
-            mongo $HOST --quiet --eval 'sh.status()'
+            mongo mongodb://$CONNSTR --quiet --eval 'sh.status()'
+            USERROLE='root'
+            DBNAME='{{ .Values.dbName }}'
+            ROLENAME='{{ .Values.dbRoleName }}'
+            set -ex
+            RES=$(mongo mongodb://$CONNSTR/admin  --quiet --eval 'db.getUsers();')
+            # if [ ! "$(echo $RES | fgrep -c "admin.$USERNAME" )" == 1 ] ; then
+            #   mongo $HOST/admin  --quiet --eval "db.createUser( { user: \"$USERNAME\", pwd: \"$USERPASS\", roles: [ { role: \"$USERROLE\", db: \"admin\" } ], \"mechanisms\": [ \"SCRAM-SHA-256\" ] } );"
+            # else
+            #   echo $RES
+            # fi
+            USERNAME='{{ .Values.dbUserName }}'
+            USERPASS=$userPassword
+            USERROLE=$ROLENAME
+            ROCOLLNAME="{{ $.Values.roCollection }}"
+            echo "RANDOMCOLLECTIONNAME=$RANDOMCOLLECTIONNAME"
+            set -x
+            mongo mongodb://$CONNSTR/$DBNAME?authSource=admin --quiet --eval "db.$ROCOLLNAME.insert({ a: \"12345\" })"
+            mongo mongodb://$CONNSTR/$DBNAME?authSource=admin --quiet --eval "db.$RANDOMCOLLECTIONNAME.insert({ init_key: \"init_value\" })"
+            RES=$(mongo mongodb://$CONNSTR/$DBNAME?authSource=admin  --quiet --eval 'db.getRoles({rolesInfo: 1, showBuiltinRoles: false });')
+            if [ ! "$(echo $RES | fgrep -c "$ROLENAME" )" == 1 ] ; then
+              mongo mongodb://$CONNSTR/$DBNAME?authSource=admin  --quiet --eval "db.createRole( { role: \"$ROLENAME\", privileges: [ { resource: { db: \"$DBNAME\", collection: \"$RANDOMCOLLECTIONNAME\" }, \
+                actions: [ \"find\", \"update\", \"insert\" ] } ], roles: [ { role: \"read\", db: \"$DBNAME\" } ] } );"
+              mongo mongodb://$CONNSTR/$DBNAME?authSource=admin  --quiet --eval "db.getRole( \"$ROLENAME\", { showPrivileges: true } )"
+            else
+              echo $RES
+            fi
+            RES=$(mongo mongodb://$CONNSTR/$DBNAME?authSource=admin  --quiet --eval 'db.getUsers();')
+            if [ ! "$(echo $RES | fgrep -c "$DBNAME.$USERNAME" )" == 1 ] ; then
+              mongo mongodb://$CONNSTR/$DBNAME?authSource=admin  --quiet --eval "db.createUser( { user: \"$USERNAME\", pwd: \"$USERPASS\", roles: [ { role: \"$USERROLE\", db: \"$DBNAME\" } ], \"mechanisms\": [ \"SCRAM-SHA-256\" ] } );"
+            else
+              echo $RES
+            fi
+            mongo mongodb://$CONNSTR/$DBNAME?authSource=admin  --quiet --eval 'db.getUsers();'
+            CONNSTR2="${USERNAME}:${USERPASS}@${HOST}"
+            mongo mongodb://$CONNSTR2/$DBNAME --quiet --eval "db.$RANDOMCOLLECTIONNAME.insert({ some_key: \"some_value\" })"
+            echo "should fail: "
+            mongo mongodb://$CONNSTR2/$DBNAME --quiet --eval "db.$ROCOLLNAME.insert({ some_key: \"some_value\" })" || true
+            mongo mongodb://$CONNSTR2/$DBNAME --quiet --eval 'db.getCollectionNames();'
+            mongo mongodb://$CONNSTR2/$DBNAME --quiet --eval "db.runCommand( { find: \"$ROCOLLNAME\" } );"
+            mongo mongodb://$CONNSTR2/$DBNAME --quiet --eval "db.runCommand( { find: \"$RANDOMCOLLECTIONNAME\" } );"
+            mongo mongodb://$CONNSTR2/$DBNAME --quiet --eval 'db.getCollectionNames().forEach(function(collection){ print("Collection :" + collection + " , documents: " + db[collection].estimatedDocumentCount({})) } );'
         envFrom:
         - secretRef:
             name: "{{ include "mongodb-cluster-demo.fullname" $ }}-dbsecrets"

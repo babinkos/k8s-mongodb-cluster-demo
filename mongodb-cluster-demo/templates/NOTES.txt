@@ -3,6 +3,29 @@
  pass="{{ $.dbaPassword | b64dec }}" ; name="{{ .Values.clstAdminName }}" ; str="mongodb://$name:$pass@" ; for i in $( kubectl get svc -n {{ $.Release.Namespace }}| grep -v "<none>" | grep "{{ include "mongodb-cluster-demo.fullname" . }}" | awk '{ print $4 }' ) ; do str="$str$i," ; done ; CONNSTR=${str%","}
 mongo $CONNSTR --quiet --eval 'sh.status();'
 
+2. List collections from test database {{ .Values.dbName }} with test user credentials:
+
+ pass="{{ $.userPassword | b64dec }}" ; name="{{ .Values.dbUserName }}" ; str="mongodb://$name:$pass@" ; for i in $( kubectl get svc -n {{ $.Release.Namespace }}| grep -v "<none>" | grep "{{ include "mongodb-cluster-demo.fullname" . }}" | awk '{ print $4 }' ) ; do str="$str$i," ; done ; CONNSTR2=${str%","}
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.getCollectionNames();'
+
+3. List collection documents count from test db {{ .Values.dbName }}:
+
+ pass="{{ $.userPassword | b64dec }}" ; name="{{ .Values.dbUserName }}" ; str="mongodb://$name:$pass@" ; for i in $( kubectl get svc -n {{ $.Release.Namespace }}| grep -v "<none>" | grep "{{ include "mongodb-cluster-demo.fullname" . }}" | awk '{ print $4 }' ) ; do str="$str$i," ; done ; CONNSTR2=${str%","}
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.getCollectionNames().forEach(function(collection){ print("Collection :" + collection + " , documents: " + db[collection].estimatedDocumentCount({})) } );'
+
+4. Add new document to collection {{ $.RANDOMCOLLECTIONNAME | b64dec }} with RW rights in test db {{ .Values.dbName }}:
+
+ pass="{{ $.userPassword | b64dec }}" ; name="{{ .Values.dbUserName }}" ; str="mongodb://$name:$pass@" ; for i in $( kubectl get svc -n {{ $.Release.Namespace }}| grep -v "<none>" | grep "{{ include "mongodb-cluster-demo.fullname" . }}" | awk '{ print $4 }' ) ; do str="$str$i," ; done ; CONNSTR2=${str%","}
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.runCommand( { find: "{{ $.RANDOMCOLLECTIONNAME | b64dec }}" } );'
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.{{- $.RANDOMCOLLECTIONNAME | b64dec }}.insert({ some_new_key: "some_new_value" });'
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.runCommand( { find: "{{ $.RANDOMCOLLECTIONNAME | b64dec }}" } );'
+
+5. Try to add new document to another ( read-only for user {{ .Values.dbUserName }} ) collection {{ $.Values.roCollection }} in test db {{ .Values.dbName }}:
+
+ pass="{{ $.userPassword | b64dec }}" ; name="{{ .Values.dbUserName }}" ; str="mongodb://$name:$pass@" ; for i in $( kubectl get svc -n {{ $.Release.Namespace }}| grep -v "<none>" | grep "{{ include "mongodb-cluster-demo.fullname" . }}" | awk '{ print $4 }' ) ; do str="$str$i," ; done ; CONNSTR2=${str%","}
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.runCommand( { find: "{{- $.Values.roCollection }}" } );'
+mongo "$CONNSTR2/{{ .Values.dbName }}" --quiet --eval 'db.{{- $.Values.roCollection }}.insert({ some_new_key: "some_new_value" });'
+
 
 To uninstall everything just run:
 
