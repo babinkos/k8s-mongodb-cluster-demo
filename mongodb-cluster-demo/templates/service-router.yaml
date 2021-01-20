@@ -7,10 +7,8 @@ metadata:
   labels:
     {{- include "mongodb-cluster-demo.labels" $ | nindent 4 }}
   {{- if $.Values.service.router.annotations }}
-  {{- with $.Values.service.router.annotations }}
   annotations:
-    {{- toYaml $ | nindent 4 }}
-  {{- end }}
+    {{- toYaml $.Values.service.router.annotations | nindent 4 }}
   {{- end }}
 spec:
   type: LoadBalancer
